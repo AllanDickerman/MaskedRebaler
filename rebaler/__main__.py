@@ -29,6 +29,7 @@ from .misc import MyHelpFormatter, load_fasta, load_fasta_or_fastq, int_to_str, 
 from .alignment import Alignment
 from . import log
 from .unitig_graph import UnitigGraph
+from .mask_low_coverage_regions import mask_low_coverage_regions #added by AWD
 
 __version__ = '0.2.0'
 
@@ -61,6 +62,9 @@ def get_arguments():
     optional_args.add_argument('--random', action='store_true',
                                help='If a part of the reference is missing, replace it with random '
                                     'sequence (default: leave it as the reference sequence)')
+
+    optional_args.add_argument('--required_coverage', type=int, 
+                                help='Mask with N\'s regions of assembled genome with less than this read depth ')  #added by AWD
 
     help_args = parser.add_argument_group('Help')
     help_args.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
@@ -95,7 +99,13 @@ def main():
         polishing_rounds(ref_names, unpolished_sequences, circularity, args.reads, args.threads,
                          polish_dir)
         final_assembly = final_shred_and_polish(ref_names, circularity, polish_dir, args.threads)
-        output_result(final_assembly, circularity)
+
+        if args.required_coverage:
+            log.log_section_header('Masking low-coverage regions of assembly')
+            log.log_explanation('Mask (convert to Ns) regions of assembly with read coverage below threshold ({}) '.format(args.required_coverage))
+            mask_low_coverage_regions(final_assembly, args.reads, min_depth=args.required_coverage, threads=args.threads, circularity=circularity)
+        else:
+            output_result(final_assembly, circularity)
 
     log.log('')
 
@@ -107,7 +117,7 @@ def load_reference(ref_filename):
     reference = load_fasta(ref_filename)
     ref_names = [x[0] for x in reference]
     circularity = {x[0]: 'circular=true' in x[2].lower() for x in reference}
-    ref_seqs = {x[0]: x[1] for x in reference}
+    ref_seqs = {x[0]: x[1].upper() for x in reference}
     print_ref_info(ref_names, ref_seqs, circularity)
     return reference, ref_names, circularity, ref_seqs
 
